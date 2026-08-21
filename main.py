@@ -11,7 +11,7 @@ from ThreadAll.ThreadCommand import CommandWorker
 from ThreadAll.ThreadGetMotorData import GetMotorDataThread
 from ThreadAll.ThreadGetTorqueData import GetTorqueThread
 from ThreadAll.ThreadWebgl import WebglThread
-from ThreadAll.ThreadRppgDL import RppgDLThread
+from ThreadAll.ThreadRppg import RppgThread
 
 
 class MainWindow(QWidget):
@@ -76,12 +76,12 @@ class MainWindow(QWidget):
         self.ui.webEngineView.load('http://localhost:8004/index.html')          # 在控件上加载 WebGL
 
         """----------------------------------------- rPPG DL 生理信号监测 -----------------------------------------------------------"""
-        self._init_rppg_dl_ui()
-        self._init_rppg_dl_thread()
+        self._init_rppg_ui()
+        self._init_rppg_thread()
 
-    # ============== rPPG DL 生理信号监测 ==============
+    # ============== rPPG 生理信号监测 ==============
 
-    def _init_rppg_dl_ui(self):
+    def _init_rppg_ui(self):
         """在 showPage 信息栏添加心率/血氧显示卡片"""
         card_style = (
             "border-radius: 15px;"
@@ -109,59 +109,59 @@ class MainWindow(QWidget):
 
         spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
-        self._hr_dl_frame, self._hr_dl_label = _make_card("心率 (BPM)", "rppgdl_hr_frame")
-        self.ui.horizontalLayout_2.addWidget(self._hr_dl_frame)
+        self._hr_frame, self._hr_label = _make_card("心率 (BPM)", "rppg_hr_frame")
+        self.ui.horizontalLayout_2.addWidget(self._hr_frame)
         self.ui.horizontalLayout_2.addItem(spacer)
 
-        self._spo2_dl_frame, self._spo2_dl_label = _make_card("血氧 (%)", "rppgdl_spo2_frame")
-        self.ui.horizontalLayout_2.addWidget(self._spo2_dl_frame)
+        self._spo2_frame, self._spo2_label = _make_card("血氧 (%)", "rppg_spo2_frame")
+        self.ui.horizontalLayout_2.addWidget(self._spo2_frame)
         self.ui.horizontalLayout_2.addItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
 
-        print("[rPPG-DL] UI 卡片已添加: 心率 + 血氧")
+        print("[rPPG] UI 卡片已添加: 心率 + 血氧")
 
-    def _init_rppg_dl_thread(self):
+    def _init_rppg_thread(self):
         """启动 DL rPPG 采集线程"""
-        self.rppg_dl_thread = RppgDLThread(camera_id=0)
-        self.rppg_dl_thread.metrics_ready.connect(self._on_rppg_dl_metrics)
-        self.rppg_dl_thread.face_status.connect(self._on_rppg_dl_face_status)
-        self.rppg_dl_thread.error_occurred.connect(self._on_rppg_dl_error)
-        self.rppg_dl_thread.initialized.connect(self._on_rppg_dl_initialized)
-        self.rppg_dl_thread.start()
-        print("[rPPG-DL] 采集线程已启动")
+        self.rppg_thread = RppgThread(camera_id=0)
+        self.rppg_thread.metrics_ready.connect(self._on_rppg_metrics)
+        self.rppg_thread.face_status.connect(self._on_rppg_face_status)
+        self.rppg_thread.error_occurred.connect(self._on_rppg_error)
+        self.rppg_thread.initialized.connect(self._on_rppg_initialized)
+        self.rppg_thread.start()
+        print("[rPPG] 采集线程已启动")
 
-    # ---- rPPG DL 信号槽 ----
+    # ---- rPPG 信号槽 ----
 
-    def _on_rppg_dl_metrics(self, metrics: dict):
+    def _on_rppg_metrics(self, metrics: dict):
         """更新心率/血氧标签"""
         hr = metrics.get('heart_rate')
         spo2 = metrics.get('spo2')
 
         if hr is not None:
-            self._hr_dl_label.setText(str(int(round(hr))))
-            self._hr_dl_label.setStyleSheet("font: 18pt '微软雅黑'; color: #d32f2f;")
+            self._hr_label.setText(str(int(round(hr))))
+            self._hr_label.setStyleSheet("font: 18pt '微软雅黑'; color: #d32f2f;")
 
         if spo2 is not None:
-            self._spo2_dl_label.setText(str(int(round(spo2))))
+            self._spo2_label.setText(str(int(round(spo2))))
 
-    def _on_rppg_dl_face_status(self, has_face: bool):
+    def _on_rppg_face_status(self, has_face: bool):
         """人脸检测状态变化"""
         if not has_face:
-            self._hr_dl_label.setText("无脸")
-            self._spo2_dl_label.setText("无脸")
+            self._hr_label.setText("无脸")
+            self._spo2_label.setText("无脸")
 
-    def _on_rppg_dl_error(self, msg: str):
+    def _on_rppg_error(self, msg: str):
         """rPPG 错误处理"""
-        print(f"[rPPG-DL] 错误: {msg}")
-        self._hr_dl_label.setText("错误")
-        self._spo2_dl_label.setText("错误")
+        print(f"[rPPG] 错误: {msg}")
+        self._hr_label.setText("错误")
+        self._spo2_label.setText("错误")
 
-    def _on_rppg_dl_initialized(self, success: bool):
+    def _on_rppg_initialized(self, success: bool):
         """rPPG 初始化完成"""
         if success:
-            print("[rPPG-DL] 初始化成功，等待生理数据...")
+            print("[rPPG] 初始化成功，等待生理数据...")
         else:
-            self._hr_dl_label.setText("未就绪")
-            self._spo2_dl_label.setText("未就绪")
+            self._hr_label.setText("未就绪")
+            self._spo2_label.setText("未就绪")
 
 
     # 关闭定时器和线程。将webgl界面回到原位
@@ -464,10 +464,10 @@ class MainWindow(QWidget):
         self.webglWorker.wait()
 
         # 停止 rPPG DL 采集线程
-        if hasattr(self, 'rppg_dl_thread'):
-            self.rppg_dl_thread.stop()
-            self.rppg_dl_thread.wait()
-            print("[rPPG-DL] 线程已停止")
+        if hasattr(self, 'rppg_thread'):
+            self.rppg_thread.stop()
+            self.rppg_thread.wait()
+            print("[rPPG] 线程已停止")
 
         event.accept()
 

@@ -98,11 +98,14 @@ def main():
 
     def _send(obj):
         if conn_holder['conn'] is None:
+            print("[rPPG] 发送失败: 无连接", flush=True)
             return
         try:
-            conn_holder['conn'].sendall((json.dumps(obj) + '\n').encode('utf-8'))
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
+            payload = json.dumps(obj) + '\n'
+            conn_holder['conn'].sendall(payload.encode('utf-8'))
+            print(f"[rPPG] 已发送 {len(payload)} 字节: {obj}", flush=True)
+        except Exception as e:
+            print(f"[rPPG] 发送异常: {type(e).__name__}: {e}", flush=True)
 
     def on_rppg_result(rppg_signal, rppg_filtered, bpm, rr, spo2, hrv, fps):
         metrics = {}
@@ -113,9 +116,12 @@ def main():
         if rr is not None:
             metrics['breath_rate'] = round(float(rr), 1)
         if hrv is not None:
-            metrics['hrv'] = hrv
+            # hrv = [sdnn, rmssd, [lf, hf, lf/hf]]，转成 Python 原生类型避免 json 序列化失败
+            try:
+                metrics['hrv'] = [float(hrv[0]), float(hrv[1]), [float(x) for x in hrv[2]]]
+            except Exception:
+                pass
         if metrics:
-            print(f"[rPPG] 发送数据: {metrics}", flush=True)
             _send(metrics)
 
     pos.set_callback(on_rppg_result)

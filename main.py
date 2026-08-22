@@ -41,10 +41,13 @@ class RppgClientThread(QThread):
         while self.running:
             try:
                 s = socket.create_connection(('127.0.0.1', self.port), timeout=3)
+                print(f"[rPPG] 客户端已连接服务器 127.0.0.1:{self.port}", flush=True)
                 break
-            except OSError:
+            except OSError as e:
+                print(f"[rPPG] 连接失败重试: {e}", flush=True)
                 self.msleep(500)
         if s is None:
+            print("[rPPG] 客户端无法连接，退出", flush=True)
             return
 
         buf = b''
@@ -52,6 +55,7 @@ class RppgClientThread(QThread):
             try:
                 data = s.recv(4096)
                 if not data:
+                    print("[rPPG] 服务器关闭了连接", flush=True)
                     break
                 buf += data
                 while b'\n' in buf:
@@ -60,13 +64,16 @@ class RppgClientThread(QThread):
                         continue
                     try:
                         obj = json.loads(line.decode('utf-8'))
-                    except (ValueError, UnicodeDecodeError):
+                    except (ValueError, UnicodeDecodeError) as e:
+                        print(f"[rPPG] 解析失败: {e}", flush=True)
                         continue
+                    print(f"[rPPG] 客户端收到: {obj}", flush=True)
                     if 'face' in obj:
                         self.face_received.emit(bool(obj['face']))
                     else:
                         self.metrics_received.emit(obj)
-            except (OSError, ConnectionResetError):
+            except (OSError, ConnectionResetError) as e:
+                print(f"[rPPG] 接收异常: {e}", flush=True)
                 break
         try:
             if s:

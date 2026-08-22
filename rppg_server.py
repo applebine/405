@@ -115,6 +115,7 @@ def main():
         if hrv is not None:
             metrics['hrv'] = hrv
         if metrics:
+            print(f"[rPPG] 发送数据: {metrics}", flush=True)
             _send(metrics)
 
     pos.set_callback(on_rppg_result)

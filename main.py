@@ -209,6 +209,7 @@ class MainWindow(QWidget):
 
     def _on_rppg_metrics(self, metrics: dict):
         """更新心率/血氧标签"""
+        print(f"[rPPG] 主进程收到: {metrics}", flush=True)
         hr = metrics.get('heart_rate')
         spo2 = metrics.get('spo2')
 

@@ -10,6 +10,7 @@ rPPG 控制台测试程序（无需康复机器人、无需完整界面）
 将脸正对摄像头，保持静止，约 10-15 秒后开始打印心率/血氧数值。
 程序 60 秒后自动退出。
 """
+import _preload  # 必须先于 Qt 导入：预加载 libgomp，解决 Jetson 上 cv2 的 TLS 错误
 import sys
 
 from PySide6.QtCore import QCoreApplication, QTimer

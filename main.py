@@ -1,3 +1,4 @@
+import _preload  # 必须先于 Qt 导入：预加载 libgomp，解决 Jetson 上 cv2 的 TLS 错误
 import sys
 import socket
 import threading

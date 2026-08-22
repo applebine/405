@@ -85,6 +85,12 @@ def main():
         print(f"[rPPG] 错误: 无法打开摄像头 {camera_id}")
         return
 
+    # 强制 640x480@30fps，避免 Jetson 上默认帧率过低导致呼吸率算法崩溃
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    print(f"[rPPG] 摄像头 {camera_id} 实际分辨率: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}, FPS: {cap.get(cv2.CAP_PROP_FPS)}")
+
     klt = SkinKLTTracker()
     pos = POS()
 

@@ -16,6 +16,10 @@ from ThreadAll.ThreadGetMotorData import GetMotorDataThread
 from ThreadAll.ThreadGetTorqueData import GetTorqueThread
 from ThreadAll.ThreadWebgl import WebglThread
 
+# 在 import 阶段就固定项目绝对路径（WebglThread 运行后会 os.chdir 改变工作目录，
+# 后续不能再依赖 os.path.abspath(__file__) 计算路径）
+_PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 class RppgClientThread(QThread):
     """rPPG 客户端线程：连接独立的 rppg_server 进程，接收生理指标。
@@ -185,10 +189,12 @@ class MainWindow(QWidget):
         self.rppg_camera_id = 0
 
         # 启动 rppg_server.py 子进程
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rppg_server.py')
+        script = os.path.join(_PROJECT_DIR, 'rppg_server.py')
+        log_path = os.path.join(_PROJECT_DIR, 'rppg_server.log')
+        log_file = open(log_path, 'w')
         self.rppg_proc = subprocess.Popen(
             [sys.executable, script, str(self.rppg_port), str(self.rppg_camera_id)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            stdout=log_file, stderr=subprocess.STDOUT
         )
 
         # socket 客户端线程

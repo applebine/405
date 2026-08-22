@@ -41,6 +41,9 @@ class RppgClientThread(QThread):
         while self.running:
             try:
                 s = socket.create_connection(('127.0.0.1', self.port), timeout=3)
+                # 关键：create_connection 的 timeout 会同时作用于后续 recv，
+                # 必须取消，否则 recv 3 秒超时断开（rppg_server 要 12 秒才发第一条数据）
+                s.settimeout(None)
                 print(f"[rPPG] 客户端已连接服务器 127.0.0.1:{self.port}", flush=True)
                 break
             except OSError as e:

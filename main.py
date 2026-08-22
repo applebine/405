@@ -47,28 +47,28 @@ class MainWindow(QWidget):
 
         """-----------------------------------------多线程处理-----------------------------------------------------------"""
         # # 打开串口，进行通信
-        ports = serial.tools.list_ports.comports()      # 获取设备连接的串口，一般都仅有一个，那就是ports[0][0]
-        self.downSer = serial.Serial(port=ports[0][0], baudrate=115200, timeout=1)   # Jetson <--> STM32
-        self.upSer = serial.Serial(port="/dev/ttyTHS0", baudrate=115200, timeout=1)  # PC <--> Jetson
+        #ports = serial.tools.list_ports.comports()      # 获取设备连接的串口，一般都仅有一个，那就是ports[0][0]
+        #self.downSer = serial.Serial(port=ports[0][0], baudrate=115200, timeout=1)   # Jetson <--> STM32
+        #self.upSer = serial.Serial(port="/dev/ttyTHS0", baudrate=115200, timeout=1)  # PC <--> Jetson
         #
         # # 接收 PC 端命令的线程
-        self.commandWorker = CommandWorker(self.upSer, self.downSer)
-        self.commandThread = QThread()
-        self.commandWorker.moveToThread(self.commandThread)                     # 将worker移到线程中
-        self.commandWorker.commandData.connect(self.get_com_thread_func)        # 连接信号和槽
-        self.commandThread.started.connect(self.commandWorker.run)              # 当线程启动时，调用worker的run方法
-        self.commandThread.start()
+        #self.commandWorker = CommandWorker(self.upSer, self.downSer)
+        #self.commandThread = QThread()
+        #self.commandWorker.moveToThread(self.commandThread)                     # 将worker移到线程中
+        #self.commandWorker.commandData.connect(self.get_com_thread_func)        # 连接信号和槽
+        #self.commandThread.started.connect(self.commandWorker.run)              # 当线程启动时，调用worker的run方法
+        #self.commandThread.start()
         #
         # # 获取电机的角度和速度信息的线程
-        self.getMotorDataWorker = GetMotorDataThread(self.downSer)
-        self.getMotorDataWorker.motorData.connect(self.get_motor_data_func)     # 连接信号和槽
-        self.getMotorDataThread = None
+        #self.getMotorDataWorker = GetMotorDataThread(self.downSer)
+        #self.getMotorDataWorker.motorData.connect(self.get_motor_data_func)     # 连接信号和槽
+        #self.getMotorDataThread = None
         #
         # # 获取扭矩传感器的扭矩信息的线程
-        self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    # 创建一个使用IPv4的UDP协议的套接字
-        self.getTorqueWorker = GetTorqueThread(self.clientSocket)
-        self.getTorqueWorker.torqueData.connect(self.get_torque_func)           # 连接信号和槽
-        self.getTorqueThread = None
+        #self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    # 创建一个使用IPv4的UDP协议的套接字
+        #self.getTorqueWorker = GetTorqueThread(self.clientSocket)
+        #self.getTorqueWorker.torqueData.connect(self.get_torque_func)           # 连接信号和槽
+        #self.getTorqueThread = None
 
         # 展示 WebGl 的线程
         self.webglWorker = WebglThread()

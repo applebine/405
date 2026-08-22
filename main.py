@@ -2,17 +2,76 @@ import _preload  # 必须先于 Qt 导入：预加载 libgomp，解决 Jetson �
 import sys
 import socket
 import threading
+import subprocess
+import json
+import os
 import pandas as pd
 import serial.tools.list_ports
 from PySide6.QtWidgets import QApplication, QWidget, QFrame, QLabel, QSpacerItem, QSizePolicy, QVBoxLayout
-from PySide6.QtCore import Slot, QTimer, QTime, QThread, Qt
+from PySide6.QtCore import Slot, QTimer, QTime, QThread, Qt, Signal
 
 from Ui.showUi import Ui_Form  # 这里的类名取决于你在 Qt Designer 中的顶层对象类型
 from ThreadAll.ThreadCommand import CommandWorker
 from ThreadAll.ThreadGetMotorData import GetMotorDataThread
 from ThreadAll.ThreadGetTorqueData import GetTorqueThread
 from ThreadAll.ThreadWebgl import WebglThread
-from ThreadAll.ThreadRppg import RppgThread
+
+
+class RppgClientThread(QThread):
+    """rPPG 客户端线程：连接独立的 rppg_server 进程，接收生理指标。
+
+    主进程不 import cv2，避免与 Qt6 的 ABI 冲突（Jetson 黑屏问题）。
+    """
+    metrics_received = Signal(dict)
+    face_received = Signal(bool)
+    error_received = Signal(str)
+
+    def __init__(self, port=8005):
+        super().__init__()
+        self.port = port
+        self.running = True
+
+    def run(self):
+        s = None
+        # 重试连接（等 rppg_server 子进程启动）
+        while self.running:
+            try:
+                s = socket.create_connection(('127.0.0.1', self.port), timeout=3)
+                break
+            except OSError:
+                self.msleep(500)
+        if s is None:
+            return
+
+        buf = b''
+        while self.running:
+            try:
+                data = s.recv(4096)
+                if not data:
+                    break
+                buf += data
+                while b'\n' in buf:
+                    line, buf = buf.split(b'\n', 1)
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line.decode('utf-8'))
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    if 'face' in obj:
+                        self.face_received.emit(bool(obj['face']))
+                    else:
+                        self.metrics_received.emit(obj)
+            except (OSError, ConnectionResetError):
+                break
+        try:
+            if s:
+                s.close()
+        except Exception:
+            pass
+
+    def stop(self):
+        self.running = False
 
 
 class MainWindow(QWidget):
@@ -47,28 +106,28 @@ class MainWindow(QWidget):
 
         """-----------------------------------------多线程处理-----------------------------------------------------------"""
         # # 打开串口，进行通信
-        #ports = serial.tools.list_ports.comports()      # 获取设备连接的串口，一般都仅有一个，那就是ports[0][0]
-        #self.downSer = serial.Serial(port=ports[0][0], baudrate=115200, timeout=1)   # Jetson <--> STM32
-        #self.upSer = serial.Serial(port="/dev/ttyTHS0", baudrate=115200, timeout=1)  # PC <--> Jetson
+        ports = serial.tools.list_ports.comports()      # 获取设备连接的串口，一般都仅有一个，那就是ports[0][0]
+        self.downSer = serial.Serial(port=ports[0][0], baudrate=115200, timeout=1)   # Jetson <--> STM32
+        self.upSer = serial.Serial(port="/dev/ttyTHS0", baudrate=115200, timeout=1)  # PC <--> Jetson
         #
         # # 接收 PC 端命令的线程
-        #self.commandWorker = CommandWorker(self.upSer, self.downSer)
-        #self.commandThread = QThread()
-        #self.commandWorker.moveToThread(self.commandThread)                     # 将worker移到线程中
-        #self.commandWorker.commandData.connect(self.get_com_thread_func)        # 连接信号和槽
-        #self.commandThread.started.connect(self.commandWorker.run)              # 当线程启动时，调用worker的run方法
-        #self.commandThread.start()
+        self.commandWorker = CommandWorker(self.upSer, self.downSer)
+        self.commandThread = QThread()
+        self.commandWorker.moveToThread(self.commandThread)                     # 将worker移到线程中
+        self.commandWorker.commandData.connect(self.get_com_thread_func)        # 连接信号和槽
+        self.commandThread.started.connect(self.commandWorker.run)              # 当线程启动时，调用worker的run方法
+        self.commandThread.start()
         #
         # # 获取电机的角度和速度信息的线程
-        #self.getMotorDataWorker = GetMotorDataThread(self.downSer)
-        #self.getMotorDataWorker.motorData.connect(self.get_motor_data_func)     # 连接信号和槽
-        #self.getMotorDataThread = None
+        self.getMotorDataWorker = GetMotorDataThread(self.downSer)
+        self.getMotorDataWorker.motorData.connect(self.get_motor_data_func)     # 连接信号和槽
+        self.getMotorDataThread = None
         #
         # # 获取扭矩传感器的扭矩信息的线程
-        #self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    # 创建一个使用IPv4的UDP协议的套接字
-        #self.getTorqueWorker = GetTorqueThread(self.clientSocket)
-        #self.getTorqueWorker.torqueData.connect(self.get_torque_func)           # 连接信号和槽
-        #self.getTorqueThread = None
+        self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    # 创建一个使用IPv4的UDP协议的套接字
+        self.getTorqueWorker = GetTorqueThread(self.clientSocket)
+        self.getTorqueWorker.torqueData.connect(self.get_torque_func)           # 连接信号和槽
+        self.getTorqueThread = None
 
         # 展示 WebGl 的线程
         self.webglWorker = WebglThread()
@@ -78,7 +137,7 @@ class MainWindow(QWidget):
 
         """----------------------------------------- rPPG DL 生理信号监测 -----------------------------------------------------------"""
         self._init_rppg_ui()
-        self._init_rppg_thread()
+        self._init_rppg_process()
 
     # ============== rPPG 生理信号监测 ==============
 
@@ -120,15 +179,25 @@ class MainWindow(QWidget):
 
         print("[rPPG] UI 卡片已添加: 心率 + 血氧")
 
-    def _init_rppg_thread(self):
-        """启动 DL rPPG 采集线程"""
-        self.rppg_thread = RppgThread(camera_id=0)
-        self.rppg_thread.metrics_ready.connect(self._on_rppg_metrics)
-        self.rppg_thread.face_status.connect(self._on_rppg_face_status)
-        self.rppg_thread.error_occurred.connect(self._on_rppg_error)
-        self.rppg_thread.initialized.connect(self._on_rppg_initialized)
-        self.rppg_thread.start()
-        print("[rPPG] 采集线程已启动")
+    def _init_rppg_process(self):
+        """启动独立的 rPPG 进程（避免 cv2 与 Qt6 冲突），并用 socket 接收数据"""
+        self.rppg_port = 8005
+        self.rppg_camera_id = 0
+
+        # 启动 rppg_server.py 子进程
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rppg_server.py')
+        self.rppg_proc = subprocess.Popen(
+            [sys.executable, script, str(self.rppg_port), str(self.rppg_camera_id)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+
+        # socket 客户端线程
+        self.rppg_client = RppgClientThread(self.rppg_port)
+        self.rppg_client.metrics_received.connect(self._on_rppg_metrics)
+        self.rppg_client.face_received.connect(self._on_rppg_face_status)
+        self.rppg_client.error_received.connect(self._on_rppg_error)
+        self.rppg_client.start()
+        print("[rPPG] 独立进程已启动，等待生理数据...")
 
     # ---- rPPG 信号槽 ----
 
@@ -155,14 +224,6 @@ class MainWindow(QWidget):
         print(f"[rPPG] 错误: {msg}")
         self._hr_label.setText("错误")
         self._spo2_label.setText("错误")
-
-    def _on_rppg_initialized(self, success: bool):
-        """rPPG 初始化完成"""
-        if success:
-            print("[rPPG] 初始化成功，等待生理数据...")
-        else:
-            self._hr_label.setText("未就绪")
-            self._spo2_label.setText("未就绪")
 
 
     # 关闭定时器和线程。将webgl界面回到原位
@@ -464,11 +525,17 @@ class MainWindow(QWidget):
         self.webglWorker.stop()
         self.webglWorker.wait()
 
-        # 停止 rPPG DL 采集线程
-        if hasattr(self, 'rppg_thread'):
-            self.rppg_thread.stop()
-            self.rppg_thread.wait()
-            print("[rPPG] 线程已停止")
+        # 停止 rPPG 独立进程和客户端线程
+        if hasattr(self, 'rppg_client'):
+            self.rppg_client.stop()
+            self.rppg_client.wait()
+        if hasattr(self, 'rppg_proc'):
+            self.rppg_proc.terminate()
+            try:
+                self.rppg_proc.wait(timeout=3)
+            except Exception:
+                pass
+            print("[rPPG] 独立进程已停止")
 
         event.accept()
 

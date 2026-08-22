@@ -141,30 +141,39 @@ def main():
                 time.sleep(0.01)
                 continue
 
-            if not tracking:
-                detect_count += 1
-                if detect_count % 5 == 0:
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
-                    if len(faces) > 0:
-                        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
-                        klt.select_roi(frame, (x, y, w, h))
-                        tracking = True
-                        print(f"[rPPG] 检测到人脸 ({x},{y},{w}x{h})，开始跟踪")
-                        _send({'face': True})
+            try:
+                if not tracking:
+                    detect_count += 1
+                    if detect_count % 5 == 0:
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
+                        if len(faces) > 0:
+                            x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+                            klt.select_roi(frame, (x, y, w, h))
+                            tracking = True
+                            print(f"[rPPG] 检测到人脸 ({x},{y},{w}x{h})，开始跟踪", flush=True)
+                            _send({'face': True})
 
-            if tracking:
-                smooth_box, _ = klt.track(frame)
-                if smooth_box is None:
-                    tracking = False
+                if tracking:
+                    smooth_box, _ = klt.track(frame)
+                    if smooth_box is None:
+                        tracking = False
+                        klt.initialized = False
+                        print("[rPPG] 人脸跟踪丢失，重新检测...", flush=True)
+                        _send({'face': False})
+                    else:
+                        mask = klt.get_roi_and_mask(frame, smooth_box)
+                        if np.any(mask == 255):
+                            skin_mean = compute_region_rgb_means(frame, mask)
+                            pos.add_rgb(skin_mean)
+            except Exception as e:
+                # 单帧处理失败不影响进程，重置跟踪后继续
+                print(f"[rPPG] 帧处理异常: {type(e).__name__}: {e}", flush=True)
+                tracking = False
+                try:
                     klt.initialized = False
-                    print("[rPPG] 人脸跟踪丢失，重新检测...")
-                    _send({'face': False})
-                else:
-                    mask = klt.get_roi_and_mask(frame, smooth_box)
-                    if np.any(mask == 255):
-                        skin_mean = compute_region_rgb_means(frame, mask)
-                        pos.add_rgb(skin_mean)
+                except Exception:
+                    pass
 
             time.sleep(0.03)  # ~30fps
 

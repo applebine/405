@@ -1,10 +1,10 @@
-import _preload  # 必须先于 Qt 导入：预加载 libgomp，解决 Jetson 上 cv2 的 TLS 错误
 import sys
 import socket
 import threading
 import subprocess
 import json
 import os
+import time
 import pandas as pd
 import serial.tools.list_ports
 from PySide6.QtWidgets import QApplication, QWidget, QFrame, QLabel, QSpacerItem, QSizePolicy, QVBoxLayout
@@ -197,6 +197,13 @@ class MainWindow(QWidget):
         """启动独立的 rPPG 进程（避免 cv2 与 Qt6 冲突），并用 socket 接收数据"""
         self.rppg_port = 8005
         self.rppg_camera_id = 0
+
+        # 启动 rppg_server.py 子进程前，先清理可能残留的旧进程（防止端口占用）
+        try:
+            subprocess.run(['pkill', '-f', 'rppg_server.py'], timeout=5)
+            time.sleep(0.5)  # 等端口释放
+        except Exception:
+            pass
 
         # 启动 rppg_server.py 子进程
         script = os.path.join(_PROJECT_DIR, 'rppg_server.py')
